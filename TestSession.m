@@ -1,8 +1,12 @@
 classdef TestSession < handle
 
     properties
-      index = struct('id',{})
+      tests = struct()
       path char {mustBeFolderOrEmpty} = fullfile(fileparts(mfilename('fullpath')),'tests');
+    end
+
+    properties (Dependent)
+        ids
     end
 
     properties (Constant)
@@ -10,24 +14,31 @@ classdef TestSession < handle
     end
 
     methods
-        function varargout = exists(obj, id)
-            mustBeTextScalar(id);
-            [varargout{1:nargout}] = ismember(id, {obj.index.id});
+        function yn = exists(obj, test)
+        % more sofisticated tests to follow?
+            mustBeA(test,'TestCheckpoint');
+            yn = isfield(obj.tests, test.id);
         end
+
+        function ids = get.ids(obj), ids = fieldnames(obj.tests); end
 
         function push(obj, test)
 
             validateattributes(test,'TestCheckpoint', {'scalar'});
 
-            if isempty(obj.index)
-                obj.index = test;
-            else
-                [~, idx] = exists(obj, test.id);
-                if idx > 0
-                    warning('TestSession:push:exists','Overwriting test %s', test.id);
-                    obj.index(idx) = [];
-                end
-                obj.index(end+1) = test;
+            if exists(obj, test)
+                warning('TestSession:push:exists','Overwriting test %s', test.id);
+            end
+            obj.tests.(test.id) = test;
+        end
+
+        function pp = all(obj, prop)
+            mustBeMember(prop, properties('TestCheckpoint'));
+            try
+                pp = structfun(@(x) x.(prop), obj.tests);
+            catch ERR
+                if ~strcmp(ERR.identifier, 'MATLAB:structfun:NotAScalarOutput'), rethrow(ERR); end
+                pp = cellfun(@(x) obj.tests.(x).(prop), fieldnames(obj.tests), 'unif',0);
             end
         end
 
@@ -36,14 +47,13 @@ classdef TestSession < handle
             if nargin < 2, remove_files = false; end
             validateattributes(remove_files,'logical',{'scalar'});
 
-            if remove_files
-                files = [arrayfun(@(x) x.input.file, obj.index, 'unif',0), ...
-                         arrayfun(@(x) x.output.file, obj.index, 'unif',0)];
+            if remove_files && ~isempty(obj.ids)
+                files = [{obj.all('input').file}, {obj.all('output').file}, {obj.all('test_io').file}];
                 files(~cellfun(@isfile, files)) = [];
                 cellfun(@delete,files);
             end
 
-            obj.index = struct('id',{});
+            obj.tests = struct();
         end
 
         function rm(obj, id)

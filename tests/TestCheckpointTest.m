@@ -43,10 +43,14 @@ function test_constructor(testCase)
     verifySameHandle(testCase, obj.session, testCase.TestData.session);
 end
 
-function [obj, x, y, z] = example(id)
+function [obj, x, y, z] = example(varargin)
 % Return a TestCheckpoint object, and variables to test it with
 
-    obj = TestCheckpoint(id,'dummy(x,y)', 'state', '', ...
+    % "personalize" ID, so that it is different for each test
+    s = dbstack(1);
+    id = s(1).name;
+
+    obj = TestCheckpoint(id,'dummy(x,y)', varargin{:}, ...
             'input', {'onlynames', {'x','y'}}, ...
             'output', {'onlynames', 'z'});
     x = 1;
@@ -64,22 +68,32 @@ function w = dummy(a, b)
 end
 
 function test_full_constructor(testCase)
-    obj = example('test_full_constructor');
+    obj = example('state','idle','spyname','foo');
     verifyInstanceOf(testCase, obj,'TestCheckpoint');
+
+    verifyEqual(testCase, obj.state,'idle');
+    verifyNotEmpty(testCase, obj.spyname,'foo');
 end
 
 function test_session_index(testCase)
-    example('test_session');
-    verifyWarning(testCase, @() example('test_session'), 'TestSession:push:exists');
-    verifyWarningFree(testCase, @() example('test_session_2'));
-    verifyEqual(testCase,{TestCheckpoint.session.index.id},{'test_session','test_session_2'});
+    
+    obj = TestCheckpoint('test_session_1','foo');
+
+    verifyInstanceOf(testCase, TestCheckpoint.session.tests, 'struct');
+    verifyTrue(testCase, isfield(TestCheckpoint.session.tests,'test_session_1'));
+
+    verifyInstanceOf(testCase, TestCheckpoint.session.tests.test_session_1,'TestCheckpoint');
+    verifySameHandle(testCase, obj, TestCheckpoint.session.tests.test_session_1);
+
+    verifyWarning(testCase, @() TestCheckpoint('test_session_1','foo'), 'TestSession:push:exists');
+    verifyWarningFree(testCase, @() TestCheckpoint('test_session_2','foo'));
+    verifyEqual(testCase, TestCheckpoint.session.ids, {'test_session_1','test_session_2'}');
 end
 
 function test_idle(testCase)
 % check obj.do does nothing when obj.state = 'idle'
 
-    [obj, x, y] = example('test_idle'); %#ok<ASGLU>
-    obj.state = 'idle';
+    [obj, x, y] = example('state','idle'); %#ok<ASGLU>
     assert(~isfile(obj.input.file));
 
     obj.do('input');
@@ -89,9 +103,9 @@ function test_idle(testCase)
 end
 
 function test_setup_input(testCase)
+% check obj.do('input') creates backup when obj.state = 'setup';
 
-    [obj, x, y] = example('test_setup');
-    obj.state = 'setup';
+    [obj, x, y] = example('state','setup');
     assert(~isfile(obj.input.file));
 
     obj.do('input');
@@ -100,40 +114,61 @@ function test_setup_input(testCase)
 end
 
 function test_non_intrusive(testCase)
-% obj.do will temporarily copy a variable (named TestCheckpoint.spyname by default) into the caller workspace
+% obj.do will temporarily copy a variable (named TestCheckpoint.DEF_SPYNAME by default) into the caller workspace
 % it should be renamed if it clashes with an already existing name
 
-    [obj, x, y] = example('test_setup'); %#ok<ASGLU>
-    obj.state = 'setup';
+    [obj, x, y] = example('state','setup'); %#ok<ASGLU>
 
-    eval([TestCheckpoint.spyname '= []']);
+    eval([TestCheckpoint.DEF_SPYNAME '= []']);
 
     obj.do('input');
-    verifyEmpty(testCase, eval(TestCheckpoint.spyname));
+    verifyEmpty(testCase, eval(TestCheckpoint.DEF_SPYNAME));
+end
+
+function test_spyname(testCase)
+% Regardless of the variable name, assignin('caller', VAR, val) will fail unless VAR already exists in the workspace.
+% Check that specifying an explicit obj.spyname (predefined in the workspace) solves the issue.
+
+    obj = example('state','setup');
+
+    verifyError(testCase, @do_backup, 'TestCheckpoint:do:err_static_workspace_violation');
+
+    obj.spyname = 'foo';
+    verifyWarningFree(testCase, @do_backup);
+
+    function do_backup()
+        x = 0; y = 0; foo = []; %#ok<NASGU
+        obj.do('input');
+    end
 end
 
 function test_setup_output(testCase)
+% check obj.do('output') creates backup when obj.state = 'setup'
+% and that it complains when that happens before obj.do('input')
 
-    [obj, ~, ~, z] = example('test_setup');
-    obj.state = 'setup';
+    obj = example('state','setup','spyname','foo');
+
     assert(~isfile(obj.input.file));
     assert(~isfile(obj.output.file));
 
     verifyWarning(testCase, @do_output, 'TestCheckpoint:do:order');
     verifyTrue(testCase, isfile(obj.output.file))
-    verifyEqual(testCase, obj.output.restore, struct('z', z));
+    verifyEqual(testCase, obj.output.restore, struct('z', 42));
 
     function do_output()
-        z; %#ok<VUNUS>
+        z = 42; foo = []; %#ok<NASGU>
         obj.do('output');
     end
 end
 
 function test_auto(testCase)
+% basic auto-setup cycle for fresh test
 
-    [obj, x, y] = example('test_setup'); %#ok<ASGLU>
+    [obj, x, y] = example(); %#ok<ASGLU>
     assert(~isfile(obj.input.file));
     assert(~isfile(obj.output.file));
+
+    verifyEqual(testCase, obj.state,'setup')
 
     obj.do('input');
     obj.do('output');
@@ -142,46 +177,33 @@ function test_auto(testCase)
     verifyEqual(testCase, obj.state,'idle')
 end
 
-function instrumented_function()
+function test_instrumented_script(testCase)
+% basic auto-setup cycle for fresh test
 
-    [obj, x, y] = example();
+    [obj,x,y] = example();
 
-    % Record/set inputs (if global TEST_state = 'setup')
+    % Setup run
+    z = instrumented_function(x,y);
+
+    verifyTrue(testCase, isfile(obj.input.file));
+    verifyTrue(testCase, isfile(obj.output.file));
+
+    % Test run
+    obj.state = 'test';
+    instrumented_function(x+1, y+1);
+
+    verifyTrue(testCase, isfile(obj.test_io.file));
+    verifyEqual(testCase, obj.test_io.restore(), struct('z',z))
+end
+
+function z = instrumented_function(x, y)
+
+    obj = TestCheckpoint.session.tests.test_instrumented_script;
     obj.do('input');
 
     z = dummy(x, y);
 
     obj.do('output');
-
-    dummy_test.output('onlynames', {'z'});
-
-    % Run recorded test
-    TEST_state = 'test';
-    dummy();
-    test_checkpoint('run', 'tester_test')
-
 end
 
-function foo()
-
-    % global foo
-    % foo = 42;
-
-    x = 1;
-    y = 2;
-
-    % Record/set inputs (if global TEST_state = 'setup')
-    dummy_test = test_checkpoint('dummy_test','dummy(x,y)');
-    dummy_test.input('onlynames', {'x','y'});
-
-    z = dummy(x, y);
-
-    dummy_test.output('onlynames', {'z'});
-
-    % Run recorded test
-    TEST_state = 'test';
-    dummy();
-    test_checkpoint('run', 'tester_test')
-
-end
 
