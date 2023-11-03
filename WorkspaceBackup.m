@@ -62,7 +62,8 @@ properties
 end
 
 properties (Constant, Hidden)
-    SKIPCLASSES = {'matlab.graphics', 'distributed', 'parallel.ProcessPool','onCleanup'};
+    SKIPCLASSES = {'matlab.graphics', 'distributed', 'parallel.ProcessPool','onCleanup',...
+        'function_handle','WorkspaceBackup','TestCheckpoint'};
 end
 
 methods
