@@ -138,7 +138,7 @@ methods
             varnames = setdiff(varnames, obj.skipnames);
         end
     
-        if ~isempty(obj.skipclasses) || ~isempty(obj.onlyclasses)
+        if ~isempty(varnames) && (~isempty(obj.skipclasses) || ~isempty(obj.onlyclasses))
             varinfo = evalin(obj.workspace, WorkspaceBackup.quotedcmd('whos', varnames));
 
             if ~isempty(obj.skipclasses)
