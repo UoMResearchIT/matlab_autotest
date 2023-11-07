@@ -10,10 +10,13 @@ function setupOnce(testCase)
 
     testCase.TestData.session = TestCheckpoint.session;
     testCase.TestData.origPath = testCase.TestData.session.path;
-    testCase.TestData.session.path = tempdir();
+    tmpdir = tempname();
+    mkdir(tmpdir)
+    testCase.TestData.session.path = tmpdir;
 end
 
 function teardownOnce(testCase)
+    rmdir(testCase.TestData.session.path,'s');
     testCase.TestData.session.path = testCase.TestData.origPath;
 end
 
@@ -77,17 +80,31 @@ end
 
 function test_session_index(testCase)
     
-    obj = TestCheckpoint('test_session_1','foo');
+    obj = TestCheckpoint('test_1','foo');
 
     verifyInstanceOf(testCase, TestCheckpoint.session.tests, 'struct');
-    verifyTrue(testCase, isfield(TestCheckpoint.session.tests,'test_session_1'));
+    verifyTrue(testCase, isfield(TestCheckpoint.session.tests,'test_1'));
 
-    verifyInstanceOf(testCase, TestCheckpoint.session.tests.test_session_1,'TestCheckpoint');
-    verifySameHandle(testCase, obj, TestCheckpoint.session.tests.test_session_1);
+    verifyInstanceOf(testCase, TestCheckpoint.session.tests.test_1,'TestCheckpoint');
+    verifySameHandle(testCase, obj, TestCheckpoint.session.tests.test_1);
 
-    verifyWarning(testCase, @() TestCheckpoint('test_session_1','foo'), 'TestSession:push:exists');
-    verifyWarningFree(testCase, @() TestCheckpoint('test_session_2','foo'));
-    verifyEqual(testCase, TestCheckpoint.session.ids, {'test_session_1','test_session_2'}');
+    verifyWarning(testCase, @() TestCheckpoint('test_1','foo'), 'TestSession:push:exists');
+    verifyWarningFree(testCase, @() TestCheckpoint('test_2','foo'));
+    verifyEqual(testCase, TestCheckpoint.session.ids, {'test_1','test_2'}');
+end
+
+function test_hard_index(testCase)
+% Check that session index is stored persistently in session.indexfile
+
+    TestCheckpoint('test_1','foo');
+    TestCheckpoint('test_2','bar');
+    TestCheckpoint('test_3','bam');
+
+    TestCheckpoint.session.reset(false)
+    verifyEqual(testCase, TestCheckpoint.session.ids, cell(0,1));
+
+    TestCheckpoint.session.restore();
+    verifyEqual(testCase, TestCheckpoint.session.ids, {'test_1','test_2','test_3'}');
 end
 
 function test_idle(testCase)
@@ -119,7 +136,7 @@ function test_non_intrusive(testCase)
 
     [obj, x, y] = example('state','setup'); %#ok<ASGLU>
 
-    eval([TestCheckpoint.DEF_SPYNAME '= []']);
+    eval([TestCheckpoint.DEF_SPYNAME '= [];']);
 
     obj.do('input');
     verifyEmpty(testCase, eval(TestCheckpoint.DEF_SPYNAME));
