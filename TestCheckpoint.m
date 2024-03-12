@@ -1,4 +1,6 @@
 classdef TestCheckpoint < handle
+% TESTCHECKPOINT - Tool to add automatic checkpoints to messy code (that can later be turned into unit tests).
+% See README.md for design use-case.
 
     properties
         id char {mustBeTextScalar} % unique test identifyer

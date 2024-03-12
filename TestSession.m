@@ -1,4 +1,6 @@
 classdef TestSession < handle
+% TESTSESSION - a helper class to store a global-like index of TESTCHECKPOINT objects 
+% It allows these to be accessed from anywhere in the code, via the constant propperty `TestCheckpoint.session`
 
     properties
       tests = struct()
