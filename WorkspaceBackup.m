@@ -198,7 +198,7 @@ methods
 
         if nargout == 0
             evalin(obj.workspace, strjoin([{'load', obj.file}, variables],' '));
-            if obj.verbose, fprintf('Loaded %s onto %s workspace', obj.file, obj.workspace); end
+            if obj.verbose, fprintf('Loaded %s onto %s workspace\n', obj.file, obj.workspace); end
         else
             varargout{1} = load(obj.file, variables{:});
         end
