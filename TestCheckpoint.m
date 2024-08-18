@@ -161,6 +161,6 @@ end
 function mustBeValidVariableNameOrEmpty(var)
     if ~(isempty(var) || isvarname(var))
         throwAsCaller( ...
-            createExceptionForMissingItems(var,'MATLAB:validators:mustBeValidVariableName'));
+            MException('MATLAB:validators:mustBeValidVariableName',var));
     end
 end
